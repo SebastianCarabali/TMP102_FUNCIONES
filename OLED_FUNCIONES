@@ -1,0 +1,84 @@
+#include "I2C.h"
+#include "ThisThread.h"
+#include "mbed.h"
+#include "Adafruit_GFX.h"
+#include "Adafruit_SSD1306.h" 
+#include <cstring>
+
+#define TIEMPO_MUESTREO   1s
+#define DIRECCION_TMP102 0x90
+
+// Pines y puertos 
+BufferedSerial serial(USBTX, USBRX);
+I2C i2c (D14,D15);
+Adafruit_SSD1306_I2c pantalla(i2c, D0);
+AnalogIn entradaAnalogica(A0);
+
+// Variables globales 
+char mensaje[40];
+char comando[3]= {0x01, 0x60, 0xA0};
+char datos[2];
+
+const char *mensaje_inicio = "Inicio del programa\n\r";
+
+void iniciar_pantalla() {
+    pantalla.begin();
+    pantalla.setTextSize(1);
+    pantalla.setTextColor(1);
+    pantalla.display();
+    ThisThread::sleep_for(3000ms);
+    pantalla.clearDisplay();
+    pantalla.display();
+    pantalla.printf("Test\r\n");
+    pantalla.display();
+}
+
+void leer_voltaje_analogico() {
+    float voltaje = entradaAnalogica * 3.3;
+    int entero = int(voltaje);
+    int decimal = int((voltaje - entero) * 10000);
+    
+    pantalla.clearDisplay();
+    pantalla.display();
+    sprintf(mensaje, "Voltaje:\n\r %01u.%04u V \n\r", entero, decimal);
+    pantalla.setTextCursor(0, 2);
+    pantalla.printf(mensaje);
+    pantalla.display();
+    serial.write(mensaje, strlen(mensaje));
+}
+
+float leer_temperatura() {
+    comando[0] = 0; // Registro de temperatura
+    i2c.write(DIRECCION_TMP102, comando, 1); // Enviar comando para leer
+    i2c.read(DIRECCION_TMP102, datos, 2); // Leer 2 bytes
+    int16_t temperatura = (datos[0] << 4) | (datos[1] >> 4);
+    return temperatura * 0.0625; 
+}
+
+void mostrar_temperatura(float temperatura) {
+    int entero = int(temperatura);
+    int decimal = int((temperatura - entero) * 10000);
+    
+    pantalla.clearDisplay();
+    pantalla.display();
+    sprintf(mensaje, "Temperatura:\n\r %01u.%04u C\n\r", entero, decimal);
+    pantalla.setTextCursor(0, 2);
+    pantalla.printf(mensaje);
+    pantalla.display();
+    serial.write(mensaje, strlen(mensaje));
+}
+
+int main() { 
+    iniciar_pantalla();
+    serial.write(mensaje_inicio, strlen(mensaje_inicio));
+    i2c.write(DIRECCION_TMP102, comando, 3); // Iniciar sensor de temperatura
+
+    while (true) {
+        leer_voltaje_analogico();
+        
+        float temperatura = leer_temperatura();
+        mostrar_temperatura(temperatura);
+        
+        ThisThread::sleep_for(TIEMPO_MUESTREO);
+    }
+}
